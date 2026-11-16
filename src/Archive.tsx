@@ -1,7 +1,7 @@
 import {useRef, useState, type FormEvent} from 'react'
-import {FileUp, Database} from 'lucide-react'
+import {FileUp, Database, RefreshCw} from 'lucide-react'
 import {type Upload} from './storage'
-import type {Observations} from './workspace'
+import type {Observations, NightscoutStatus} from './workspace'
 import {date, time} from './model'
 import {AddButton} from './ui'
 
@@ -11,8 +11,38 @@ const samples = {
   pump: 'event_id,started_at,ended_at,type,actual_units,planned_units,status,mode\n001,2026-11-16T12:55:00+03:00,,bolus,2.1,2.1,given,ручной\n002,2026-11-16T13:10:00+03:00,,bolus,0.4,0.8,interrupted,ручной\n',
 }
 
-export function Archive({observations, upload, add}: {
-  observations: Observations; upload: (action: Upload) => Promise<{added: number; duplicates: number}>; add: () => void;
+function NightscoutSource({status, sync}: {status?: NightscoutStatus; sync: () => Promise<void>}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const label = (at: number) => date(at) + ', ' + time(at) + ' МСК'
+  return <section className="panel source-panel nightscout-source">
+    <h2>Nightscout</h2>
+    {status?.configured ? <>
+      <p>Получаем историю каждые 5 минут, пока запущен GlucoDel.</p>
+      <dl>
+        <div><dt>Последняя успешная синхронизация</dt><dd>{status.lastSuccess ? label(status.lastSuccess) : 'Пока не было'}</dd></div>
+        <div><dt>Последнее измерение CGM</dt><dd>{status.latestMeasurement ? label(status.latestMeasurement) : 'Данных пока нет'}</dd></div>
+      </dl>
+      {status.lastSuccess && !status.latestMeasurement && <p>Nightscout ответил, но показаний CGM в полученной истории нет.</p>}
+      {(error || status.error) && <p className="field-error" role="alert">{status.error || error}</p>}
+      <p>Записи о болюсах из Nightscout отображаются отдельно от подтверждённой подачи.</p>
+      <div className="form-actions"><button className="button secondary" disabled={busy || status.syncing} onClick={async () => {
+        setBusy(true)
+        setError('')
+        try {
+          await sync()
+        } catch (error) {
+          setError(error instanceof Error ? error.message : 'Не удалось связаться с Nightscout.')
+        } finally {
+          setBusy(false)
+        }
+      }}><RefreshCw size={16}/>{busy || status.syncing ? 'Синхронизируем…' : 'Синхронизировать сейчас'}</button></div>
+    </> : <p>Чтобы подключить удалённую историю, добавьте адрес Nightscout и отдельный токен чтения в локальный файл <code>.env.local</code>, затем перезапустите GlucoDel.</p>}
+  </section>
+}
+
+export function Archive({observations, upload, add, nightscout, sync}: {
+  observations: Observations; nightscout?: NightscoutStatus; sync: () => Promise<void>; upload: (action: Upload) => Promise<{added: number; duplicates: number}>; add: () => void;
 }) {
   const [kind, setKind] = useState<Upload['kind']>('cgm')
   const [file, setFile] = useState<File>()
@@ -49,9 +79,10 @@ export function Archive({observations, upload, add}: {
   const last = points.at(-1)
   return <>
     <div className="page-intro section-heading">
-      <div><h1>Импорт данных</h1><p>Загрузите выгрузки CGM и помпы, затем добавьте приём пищи на то же время.</p></div>
+      <div><h1>Импорт данных</h1><p>Подключите Nightscout или загрузите CSV. Чтобы разобрать эпизод, добавьте приём пищи на то же время.</p></div>
       <a className="button secondary" href="?workspace=demo#/sources">Вернуться в демо</a>
     </div>
+    <NightscoutSource status={nightscout} sync={sync}/>
     <div className="source-grid">
       <section className="panel source-panel">
         <span className="row-icon"><FileUp size={19}/></span><h2>Загрузить CSV</h2>

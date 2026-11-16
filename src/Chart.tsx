@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react'
 import {Chart as ChartJS, LineController, LineElement, PointElement, LinearScale, Tooltip} from 'chart.js'
-import {Footprints, Utensils, Syringe, X} from 'lucide-react'
+import {CircleHelp, Footprints, Utensils, Syringe, X} from 'lucide-react'
 import {type CGM, type TimelineEvent, minute, number, time} from './model'
 
 ChartJS.register(LineController, LineElement, PointElement, LinearScale, Tooltip)
@@ -12,6 +12,7 @@ const yWidth = 43
 export function Marker({type}: {type: string}) {
   if (type === 'meal') return <span className="marker meal"><Utensils size={13}/></span>
   if (type === 'activity') return <span className="marker activity"><Footprints size={14}/></span>
+  if (type === 'reported') return <span className="marker bolus"><CircleHelp size={14}/></span>
   if (type === 'cancel') return <span className="marker cancel"><X size={14}/></span>
   if (type === 'basal') return <span className="marker basal"><span/></span>
   return <span className="marker bolus"><Syringe size={13}/></span>

@@ -3,6 +3,12 @@ import {applyAction, newWorkspace, type Action, type Dataset, type Workspace} fr
 
 declare const __GLUCODEL_SERVER__: boolean
 export const hasServer = __GLUCODEL_SERVER__
+export async function syncNightscout(): Promise<Workspace> {
+  const response = await fetch('/api/archive/nightscout', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' })
+  const data = await response.json() as Result & {message?: string}
+  if (!response.ok) throw new StorageError(data.message ?? 'Не удалось синхронизировать Nightscout.', data.workspace)
+  return data.workspace
+}
 export type Upload = {type: 'import'; kind: 'cgm' | 'pump'; content: string}
 type Result = {workspace: Workspace; imported?: {added: number; duplicates: number}}
 export class StorageError extends Error {

@@ -6,7 +6,7 @@ import {MealForm} from './Diary'
 import {Report} from './Report'
 import {Sources} from './Sources'
 import {Archive} from './Archive'
-import {hasServer, readWorkspace, StorageError, writeWorkspace, type Upload} from './storage'
+import {hasServer, readWorkspace, StorageError, syncNightscout, writeWorkspace, type Upload} from './storage'
 import {workspaceDay, type Action, type Workspace} from './workspace'
 import {AddButton, MealRows, makePeriod, PeriodPicker, periodBounds, validPeriod, Empty} from './ui'
 import {defaultMeal, atLocal, localInput, scenarioMeals, within, scenarioLabels, type Meal} from './model'
@@ -30,6 +30,7 @@ function App({initial}: {initial: Workspace}) {
   const stateRef = useRef(workspace)
   const {state, observations} = workspace
   const isArchive = workspace.dataset === 'archive'
+  const hasNightscout = isArchive && !!workspace.nightscout?.configured
   const anchor = workspaceDay(workspace)
   const [toast, setToast] = useState('')
   const [systemError, setSystemError] = useState('')
@@ -70,7 +71,26 @@ function App({initial}: {initial: Workspace}) {
     const timer = window.setTimeout(() => setToast(''), 3800)
     return () => window.clearTimeout(timer)
   }, [toast])
+  useEffect(() => {
+    if (!hasNightscout) return
+    let active = true
+    const timer = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      const prior = stateRef.current
+      try {
+        const next = await readWorkspace('archive')
+        if (active && prior === stateRef.current && next.version >= prior.version) {
+          stateRef.current = next
+          setWorkspace(next)
+        }
+      } catch {
+        // Keep the local view while the server is unavailable.
+      }
+    }, 15_000)
+    return () => {active = false; window.clearInterval(timer)}
+  }, [hasNightscout])
   const receive = (next: Workspace) => {
+    if (next.version < stateRef.current.version) return
     stateRef.current = next
     setWorkspace(next)
   }
@@ -156,7 +176,14 @@ function App({initial}: {initial: Workspace}) {
             go('report')
           }} anchor={anchor}/>}
         {active === 'sources' && (isArchive
-          ? <Archive observations={observations} upload={async action => {
+          ? <Archive observations={observations} nightscout={workspace.nightscout} sync={async () => {
+            try {
+              receive(await syncNightscout())
+            } catch (error) {
+              if (error instanceof StorageError && error.workspace) receive(error.workspace)
+              throw error
+            }
+          }} upload={async action => {
             const result = await mutate(action)
             changeHistoryPeriod(makePeriod(7, workspaceDay(result.workspace)))
             changeReportPeriod(makePeriod(1, workspaceDay(result.workspace)))

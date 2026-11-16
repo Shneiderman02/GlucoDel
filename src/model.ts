@@ -9,7 +9,7 @@ export type Product = {id: string; name: string; grams: number} & Record<Nutrien
 export type Meal = {id: string; title: string; at: number; products: Product[]}
 export type Revision = {meal: Meal; savedAt: number}
 export type CGM = {id: string; at: number; received: number | null; value: number | null; source: string}
-export type Insulin = {id: string; at: number; end?: number; title: string; type: 'basal' | 'bolus'; actual: number | null; planned?: number; status: 'given' | 'interrupted' | 'cancelled'; mode: string; source: string}
+export type Insulin = {id: string; at: number; end?: number; title: string; type: 'basal' | 'bolus'; actual: number | null; planned?: number; reported?: number; status: 'given' | 'interrupted' | 'cancelled' | 'reported'; mode: string; source: string}
 export type Context = {id: string; at: number; title: string; description: string; source: string}
 export type Scenario = 'full' | 'delay' | 'gap' | 'partial'
 export type Connection = 'pending' | 'connected' | 'denied' | 'error'
@@ -108,6 +108,7 @@ export function actualTotal(events: Insulin[]): number | null {
   return known.length ? known.reduce((sum, item) => sum + (item.actual ?? 0), 0) : null
 }
 export function insulinText(event: Insulin) {
+  if (event.status === 'reported') return event.reported === undefined ? 'Подача не подтверждена' : number(event.reported) + ' ед. в записи · подача не подтверждена'
   if (event.status === 'cancelled') return event.planned === undefined ? 'Отменено' : 'Отменено · план ' + number(event.planned) + ' ед.'
   if (event.actual === null) return 'Фактическая подача неизвестна'
   const actual = number(event.actual) + ' ед. фактически'
@@ -144,7 +145,7 @@ export function timeline(meals: Meal[], start: number, end: number, doses: Insul
     })),
     ...doses.map(event => ({
       id: event.id, at: event.at, end: event.end, title: event.title, category: 'insulin' as const,
-      marker: event.status === 'cancelled' ? 'cancel' : event.type, source: event.source,
+      marker: event.status === 'cancelled' ? 'cancel' : event.status === 'reported' ? 'reported' : event.type, source: event.source,
       description: insulinText(event) + ' · режим: ' + event.mode.toLowerCase(),
     })),
     ...activities.map(event => ({...event, category: 'activity' as const, marker: 'activity'})),

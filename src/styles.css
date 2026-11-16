@@ -344,3 +344,8 @@ thead th { background: var(--subtle); position: sticky; top: 0; }
 }
 .premeal { background: var(--subtle); padding: 10px 14px; }
 .premeal h3 { font-size: 13px; }
+.nightscout-source { margin-bottom: 16px; }
+.nightscout-source h2 { margin-top: 0; }
+.nightscout-source dl { display: flex; flex-wrap: wrap; gap: 12px 26px; margin-top: 12px; }
+.nightscout-source dt { color: var(--muted); font-size: 12px; }
+.nightscout-source dd { font-weight: 650; }

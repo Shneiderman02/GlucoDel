@@ -3,7 +3,11 @@ import {type Meal, type State, type Scenario, type Connection, type CGM, type In
 
 export type Dataset = 'demo' | 'archive'
 export type Observations = {points: CGM[]; insulin: Insulin[]; context: Context[]}
-export type Workspace = {dataset: Dataset; version: number; state: State; observations: Observations}
+export type NightscoutStatus = {
+  configured: boolean; syncing: boolean; lastSuccess?: number; latestMeasurement?: number;
+  changed?: number; error?: string;
+}
+export type Workspace = {dataset: Dataset; version: number; state: State; observations: Observations; nightscout?: NightscoutStatus}
 export type Action =
   | {type: 'meal'; meal: Meal}
   | {type: 'scenario'; scenario: Scenario}

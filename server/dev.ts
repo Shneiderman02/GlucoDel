@@ -2,10 +2,12 @@ import {mkdirSync} from 'node:fs'
 import {resolve} from 'node:path'
 import {createServer} from 'vite'
 import {createApi} from './api.ts'
+import {createNightscout, readNightscoutConfig} from './nightscout.ts'
 
 const directory = resolve('.glucodel')
 mkdirSync(directory, {recursive: true})
-const api = createApi(resolve(directory, 'workspace.sqlite'))
+const config = readNightscoutConfig(process.env)
+const api = createApi(resolve(directory, 'workspace.sqlite'), config && createNightscout(config))
 await new Promise<void>((done, reject) => {
   api.once('error', reject)
   api.listen(0, '127.0.0.1', done)

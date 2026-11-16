@@ -1,7 +1,10 @@
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http'
 import {DatabaseSync} from 'node:sqlite'
-import {applyAction, newWorkspace, type Action, type Dataset, type Workspace} from '../src/workspace.ts'
+import {applyAction, newWorkspace, type Action, type Dataset, type Workspace, type NightscoutStatus} from '../src/workspace.ts'
 import {insertCgmGaps, mergeImport, type ImportKind} from './import.ts'
+import {mergeNightscout, type Nightscout} from './nightscout.ts'
+
+type SavedWorkspace = Workspace & {nightscoutImport?: {sourceId: string; lastSuccess: number; changed: number}}
 
 type Command = {version: number; action: Action | {type: 'import'; kind: ImportKind; content: string}}
 const maxBytes = 8 * 1024 * 1024
@@ -31,7 +34,7 @@ async function readCommand(req: IncomingMessage): Promise<Command> {
   return body
 }
 
-export function createApi(path: string) {
+export function createApi(path: string, nightscout?: Nightscout, interval = 5 * 60_000) {
   const db = new DatabaseSync(path)
   db.exec('CREATE TABLE IF NOT EXISTS workspaces (name TEXT PRIMARY KEY, version INTEGER NOT NULL, data TEXT NOT NULL)')
   const read = db.prepare('SELECT version, data FROM workspaces WHERE name = ?')
@@ -43,22 +46,73 @@ export function createApi(path: string) {
       create.run(dataset, JSON.stringify(newWorkspace(dataset)))
       row = read.get(dataset)
     }
-    return JSON.parse(row!.data as string) as Workspace
+    return JSON.parse(row!.data as string) as SavedWorkspace
   }
-  const forClient = (workspace: Workspace) => workspace.dataset === 'archive'
-    ? {...workspace, observations: {...workspace.observations, points: insertCgmGaps(workspace.observations.points)}}
-    : workspace
+  let inFlight: Promise<boolean> | undefined
+  let syncError: string | undefined
+  let disposed = false
+  const sync = () => {
+    if (inFlight) return inFlight
+    if (!nightscout || disposed) return Promise.resolve(false)
+    const doSync = async () => {
+      const current = get('archive')
+      if (current.nightscoutImport && current.nightscoutImport.sourceId !== nightscout.sourceId) {
+        throw new Error('Этот архив уже связан с другим Nightscout. Для другого источника нужен отдельный архив.')
+      }
+      const end = Date.now()
+      const incoming = await nightscout.read(end, current.nightscoutImport?.lastSuccess)
+      if (disposed) return false
+      const latest = get('archive')
+      if (latest.nightscoutImport && latest.nightscoutImport.sourceId !== nightscout.sourceId) {
+        throw new Error('Архив уже связан с другим Nightscout.')
+      }
+      const {observations, changes} = mergeNightscout(latest.observations, incoming)
+      const next: SavedWorkspace = {...latest, observations, version: latest.version + 1,
+        nightscoutImport: {sourceId: nightscout.sourceId, lastSuccess: end, changed: changes}}
+      if (!write.run(JSON.stringify(next), next.version, 'archive', latest.version).changes) {
+        throw new Error('Архив изменился во время синхронизации. Повторите попытку.')
+      }
+      syncError = undefined
+      return true
+    }
+    inFlight = doSync().catch(error => {
+      syncError = error instanceof Error && !(error instanceof DOMException) && !('code' in error)
+        ? error.message : 'Не удалось завершить синхронизацию Nightscout.'
+      return false
+    }).finally(() => {inFlight = undefined})
+    return inFlight
+  }
+  const forClient = ({nightscoutImport, ...workspace}: SavedWorkspace): Workspace => {
+    if (workspace.dataset !== 'archive') return workspace
+    const latestMeasurement = workspace.observations.points.findLast(point => point.value !== null && point.id.startsWith('ns-cgm-'))?.at
+    const status: NightscoutStatus = {configured: !!nightscout, syncing: !!inFlight, lastSuccess: nightscoutImport?.lastSuccess,
+      latestMeasurement, changed: nightscoutImport?.changed, error: syncError}
+    // At an identical timestamp, prefer the explicitly imported CSV measurement.
+    const uniquePoints = new Map<number, typeof workspace.observations.points[number]>()
+    for (const point of workspace.observations.points) {
+      const previous = uniquePoints.get(point.at)
+      if (!previous || (point.value !== null && !point.id.startsWith('ns-cgm-')) || previous.value === null) uniquePoints.set(point.at, point)
+    }
+    return {...workspace, nightscout: status, observations: {...workspace.observations, points: insertCgmGaps([...uniquePoints.values()])}}
+  }
   const server = createServer((req, res) => {
     void (async () => {
       if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host ?? '')) return response(res, 403, {message: 'Локальный адрес обязателен.'})
       const url = new URL(req.url ?? '/', 'http://127.0.0.1')
-      const dataset = url.pathname === '/api/demo' ? 'demo' : url.pathname === '/api/archive' ? 'archive' : null
+      const syncRoute = url.pathname === '/api/archive/nightscout'
+      const dataset = url.pathname === '/api/demo' ? 'demo' : url.pathname === '/api/archive' || syncRoute ? 'archive' : null
       if (!dataset) return response(res, 404, {message: 'Маршрут не найден.'})
-      if (req.method === 'GET') return response(res, 200, {workspace: forClient(get(dataset))})
+      if (req.method === 'GET' && !syncRoute) return response(res, 200, {workspace: forClient(get(dataset))})
       if (req.method !== 'POST') return response(res, 405, {message: 'Поддерживаются GET и POST.'})
       if (req.headers['content-type']?.split(';')[0] !== 'application/json') return response(res, 415, {message: 'Ожидается application/json.'})
       const origin = req.headers.origin
       if (origin && origin !== 'http://' + req.headers.host) return response(res, 403, {message: 'Запрос с постороннего сайта отклонён.'})
+      if (syncRoute) {
+        if (!nightscout) return response(res, 503, {message: 'Настройте Nightscout в локальном файле .env.local.'})
+        const ok = await sync()
+        const workspace = forClient(get('archive'))
+        return response(res, ok ? 200 : 502, {workspace, message: ok ? undefined : syncError})
+      }
       let command: Command
       try {
         command = await readCommand(req)
@@ -96,6 +150,19 @@ export function createApi(path: string) {
       if (!res.headersSent) response(res, 500, {message: 'Не удалось открыть или сохранить локальный архив.'})
     })
   })
-  server.once('close', () => db.close())
+  let timer: NodeJS.Timeout | undefined
+  let initial: NodeJS.Timeout | undefined
+  if (nightscout && interval > 0) {
+    server.once('listening', () => {
+      initial = setTimeout(() => {void sync()}, 250)
+      timer = setInterval(() => {void sync()}, interval)
+    })
+  }
+  server.once('close', () => {
+    disposed = true
+    clearTimeout(initial)
+    clearInterval(timer)
+    db.close()
+  })
   return server
 }

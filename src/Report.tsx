@@ -33,14 +33,14 @@ export function Report({period, change, meals, observations, scenario, isArchive
         <p><strong>{date(meal.at)} · {time(meal.at)} · {meal.title}</strong> · {number(nutrition(meal.products).grams)} г</p>
         <p>{meal.products.map(product => product.name + ' ' + number(product.grams) + ' г').join(' · ')}</p><Nutrition products={meal.products}/>
       </div>) : <p>Записей о еде нет.</p>}</section>
-      <section><h3>Инсулин · {isArchive ? 'Выгрузка помпы' : 'Демо-помпа'}</h3>{doses.length ? <ul className="plain-list">{doses.map(dose =>
-        <li key={dose.id}>{date(dose.at)} · {time(dose.at)}{dose.end ? '–' + time(dose.end) : ''} · {dose.title} · {insulinText(dose)} · {dose.mode.toLowerCase()} режим</li>
+      <section><h3>Инсулин · {isArchive ? 'Источники архива' : 'Демо-помпа'}</h3>{doses.length ? <ul className="plain-list">{doses.map(dose =>
+        <li key={dose.id}>{date(dose.at)} · {time(dose.at)}{dose.end ? '–' + time(dose.end) : ''} · {dose.title} · {insulinText(dose)} · {dose.source}</li>
       )}</ul> : <p>Нет данных о фактической подаче.</p>}</section>
       {activities.length > 0 && <section><h3>Активность · Дневник</h3><ul className="plain-list">{activities.map(activity => <li key={activity.id}>{date(activity.at)} · {time(activity.at)} · {activity.title} · {activity.description}</li>)}</ul></section>}
-      <section><h3>Глюкоза · {isArchive ? 'Выгрузка CGM' : 'Демо-CGM'}</h3>
+      <section><h3>Глюкоза · {isArchive ? 'Источники архива' : 'Демо-CGM'}</h3>
         {glucose.length ? <div className="table-wrap" role="region" tabIndex={0} aria-label="Таблица измерений глюкозы">
-          <table><thead><tr><th scope="col">Дата и время</th><th scope="col">Глюкоза, ммоль/л</th><th scope="col">Получено, МСК</th></tr></thead>
-            <tbody>{glucose.map(point => <tr key={point.id}><td>{date(point.at)} · {time(point.at)}</td><td>{point.value === null ? 'Пробел CGM' : number(point.value)}</td><td>{point.value === null || point.received === null ? '—' : time(point.received)}</td></tr>)}</tbody>
+          <table><thead><tr><th scope="col">Дата и время</th><th scope="col">Глюкоза, ммоль/л</th><th scope="col">Получено, МСК</th>{isArchive && <th scope="col">Источник</th>}</tr></thead>
+            <tbody>{glucose.map(point => <tr key={point.id}><td>{date(point.at)} · {time(point.at)}</td><td>{point.value === null ? 'Пробел CGM' : number(point.value)}</td><td>{point.value === null || point.received === null ? '—' : time(point.received)}</td>{isArchive && <td>{point.value === null ? '—' : point.source}</td>}</tr>)}</tbody>
           </table>
         </div> : <p>За период нет измерений CGM.</p>}
       </section>
