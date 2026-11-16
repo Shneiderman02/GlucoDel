@@ -1,16 +1,17 @@
 import {ArrowLeft, Printer, FileDown} from 'lucide-react'
-import {type CGM, type Meal, type Scenario, context, date, forecastReason, gapRanges, insulin, insulinText, number, nutrition, time, within} from './model'
+import {type Meal, type Scenario, date, forecastReason, gapRanges, insulinText, number, nutrition, time, within} from './model'
+import type {Observations} from './workspace'
 import {Empty, Notice, PeriodPicker, type Period, periodBounds, validPeriod, Nutrition} from './ui'
 
-export function Report({period, change, meals, points, scenario, print, goPrint, goBack, anchor}: {
-  period: Period; change: (period: Period) => void; meals: Meal[]; points: CGM[]; scenario: Scenario;
+export function Report({period, change, meals, observations, scenario, isArchive, print, goPrint, goBack, anchor}: {
+  period: Period; change: (period: Period) => void; meals: Meal[]; observations: Observations; scenario: Scenario; isArchive: boolean;
   print: boolean; goPrint: () => void; goBack: () => void; anchor: string;
 }) {
   const {start, end} = periodBounds(period)
   const food = within(meals, start, end)
-  const glucose = within(points, start, end)
-  const doses = within(insulin, start, end)
-  const activities = within(context, start, end)
+  const glucose = within(observations.points, start, end)
+  const doses = within(observations.insulin, start, end)
+  const activities = within(observations.context, start, end)
   const gaps = gapRanges(glucose)
   const valid = validPeriod(period)
   return <>
@@ -22,7 +23,7 @@ export function Report({period, change, meals, points, scenario, print, goPrint,
     </div>
     {!print && <PeriodPicker value={period} change={change} anchor={anchor}/>}
     {valid && <article className="panel report-sheet" aria-label="Предпросмотр отчёта">
-      <header><span className="demo-badge"><i/>Демо · синтетические данные</span><h2>Отчёт о питании и глюкозе</h2>
+      <header><span className="demo-badge"><i/>{isArchive ? 'Локальный архив' : 'Демо · синтетические данные'}</span><h2>Отчёт о питании и глюкозе</h2>
         <p>{period.from} — {period.to} · МСК (UTC+3)</p></header>
       <section><h3>Ограничения данных</h3><p>Историческая выгрузка не обновляется в реальном времени.</p>
         <Notice>{forecastReason(scenario, glucose)}{gaps.length > 0 && ' Пробел CGM: ' + gaps.map(gap => date(gap.start) + ', ' + time(gap.start) + '–' + time(gap.end)).join('; ') + '.'}</Notice>
@@ -32,14 +33,14 @@ export function Report({period, change, meals, points, scenario, print, goPrint,
         <p><strong>{date(meal.at)} · {time(meal.at)} · {meal.title}</strong> · {number(nutrition(meal.products).grams)} г</p>
         <p>{meal.products.map(product => product.name + ' ' + number(product.grams) + ' г').join(' · ')}</p><Nutrition products={meal.products}/>
       </div>) : <p>Записей о еде нет.</p>}</section>
-      <section><h3>Инсулин · Демо-помпа</h3>{doses.length ? <ul className="plain-list">{doses.map(dose =>
+      <section><h3>Инсулин · {isArchive ? 'Выгрузка помпы' : 'Демо-помпа'}</h3>{doses.length ? <ul className="plain-list">{doses.map(dose =>
         <li key={dose.id}>{date(dose.at)} · {time(dose.at)}{dose.end ? '–' + time(dose.end) : ''} · {dose.title} · {insulinText(dose)} · {dose.mode.toLowerCase()} режим</li>
       )}</ul> : <p>Нет данных о фактической подаче.</p>}</section>
       {activities.length > 0 && <section><h3>Активность · Дневник</h3><ul className="plain-list">{activities.map(activity => <li key={activity.id}>{date(activity.at)} · {time(activity.at)} · {activity.title} · {activity.description}</li>)}</ul></section>}
-      <section><h3>Глюкоза · Демо-CGM</h3>
+      <section><h3>Глюкоза · {isArchive ? 'Выгрузка CGM' : 'Демо-CGM'}</h3>
         {glucose.length ? <div className="table-wrap" role="region" tabIndex={0} aria-label="Таблица измерений глюкозы">
           <table><thead><tr><th scope="col">Дата и время</th><th scope="col">Глюкоза, ммоль/л</th><th scope="col">Получено, МСК</th></tr></thead>
-            <tbody>{glucose.map(point => <tr key={point.id}><td>{date(point.at)} · {time(point.at)}</td><td>{point.value === null ? 'Пробел CGM' : number(point.value)}</td><td>{point.value === null ? '—' : time(point.received)}</td></tr>)}</tbody>
+            <tbody>{glucose.map(point => <tr key={point.id}><td>{date(point.at)} · {time(point.at)}</td><td>{point.value === null ? 'Пробел CGM' : number(point.value)}</td><td>{point.value === null || point.received === null ? '—' : time(point.received)}</td></tr>)}</tbody>
           </table>
         </div> : <p>За период нет измерений CGM.</p>}
       </section>

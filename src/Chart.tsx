@@ -31,6 +31,11 @@ export function GlucoseChart({series, hours, relative = false, events, selected,
   const activePoint = activePoints[activeIndex]
   const duration = hours * 60
   const start = series[0].start
+  const range = available.flat().reduce(({min, max}, point) => ({
+    min: Math.min(min, point.value!), max: Math.max(max, point.value!),
+  }), {min: 4, max: 12})
+  const chartMin = Math.max(0, Math.floor(range.min / 2) * 2)
+  const chartMax = Math.ceil(range.max / 2) * 2
 
   useEffect(() => {
     if (!canvas.current) return
@@ -58,10 +63,10 @@ export function GlucoseChart({series, hours, relative = false, events, selected,
             ticks: {display: false, stepSize: 30},
           },
           y: {
-            type: 'linear', min: 4, max: 12,
+            type: 'linear', min: chartMin, max: chartMax,
             afterFit: scale => {scale.width = yWidth - 1},
             grid: {color: '#e7ece8', tickLength: 0}, border: {display: false, dash: [3, 4]},
-            ticks: {stepSize: 2, color: '#49605b', padding: 10, font: {family: 'Inter Variable', size: 11}},
+            ticks: {maxTicksLimit: 5, color: '#49605b', padding: 10, font: {family: 'Inter Variable', size: 11}},
           },
         },
         layout: {padding: {right: 14, left: 1, top: 8}},
@@ -77,7 +82,7 @@ export function GlucoseChart({series, hours, relative = false, events, selected,
       },
     })
     return () => line.destroy()
-  }, [series, activePoint, duration, relative])
+  }, [series, activePoint, duration, relative, chartMin, chartMax])
 
   const labels = Array.from({length: 5}, (_, index) => duration * index / 4)
   return <div className="chart">

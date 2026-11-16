@@ -3,24 +3,28 @@ import {Database, RotateCcw, Radio, LoaderCircle} from 'lucide-react'
 import {type Connection, type Scenario, type State, scenarioLabels, connectionLabels} from './model'
 import {Notice} from './ui'
 
-export function Sources({state, scenario, connection, reset}: {
-  state: State; scenario: (next: Scenario) => void; connection: (next: Connection) => void; reset: () => void;
+export function Sources({state, scenario, connection, reset, local}: {
+  state: State; scenario: (next: Scenario) => Promise<void>; connection: (next: Connection) => Promise<boolean>; reset: () => Promise<void>; local: boolean;
 }) {
   const [target, setTarget] = useState<Exclude<Connection, 'pending'>>('connected')
   const [running, setRunning] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const timer = useRef<number>(undefined)
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  const simulate = (result: Exclude<Connection, 'pending'>) => {
+  const simulate = async (result: Exclude<Connection, 'pending'>) => {
     setRunning(true)
-    connection('pending')
-    timer.current = window.setTimeout(() => {
-      connection(result)
+    if (!await connection('pending')) {
+      setRunning(false)
+      return
+    }
+    timer.current = window.setTimeout(async () => {
+      await connection(result)
       setRunning(false)
     }, 800)
   }
   return <>
     <div className="page-intro"><h1>Источники данных</h1><p>Переключайте демонстрационные сценарии и проверяйте состояние данных.</p></div>
+    {local && <p className="archive-link"><a className="button secondary" href="?workspace=archive#/sources"><Database size={16}/>Открыть локальный архив</a></p>}
     <div className="source-grid">
       <section className="panel source-panel"><span className="row-icon"><Database size={19}/></span><h2>Историческая выгрузка</h2><p>Демо-CGM и демо-помпа · время по Москве</p>
         <Notice>Историческая выгрузка не обновляется в реальном времени.</Notice>

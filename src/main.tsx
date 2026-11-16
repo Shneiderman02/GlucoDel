@@ -5,8 +5,11 @@ import {Analysis, Compare} from './Analysis'
 import {MealForm} from './Diary'
 import {Report} from './Report'
 import {Sources} from './Sources'
-import {AddButton, MealRows, makePeriod, PeriodPicker, periodBounds, validPeriod} from './ui'
-import {defaultMeal, atLocal, initialState, readState, storageKey, localInput, scenarioMeals, measurements, within, scenarioLabels, type State, type Meal} from './model'
+import {Archive} from './Archive'
+import {hasServer, readWorkspace, StorageError, writeWorkspace, type Upload} from './storage'
+import {workspaceDay, type Action, type Workspace} from './workspace'
+import {AddButton, MealRows, makePeriod, PeriodPicker, periodBounds, validPeriod, Empty} from './ui'
+import {defaultMeal, atLocal, localInput, scenarioMeals, within, scenarioLabels, type Meal} from './model'
 import '@fontsource-variable/inter'
 import './styles.css'
 
@@ -21,26 +24,27 @@ const getHash = () => window.location.hash.slice(1) || '/analysis/lunch-16'
 const url = (path: string) => '#/' + path
 const go = (path: string) => {window.location.hash = url(path)}
 
-function App() {
+function App({initial}: {initial: Workspace}) {
   const [rawRoute, setRawRoute] = useState(getHash)
-  const [state, setState] = useState(readState)
-  const stateRef = useRef(state)
+  const [workspace, setWorkspace] = useState(initial)
+  const stateRef = useRef(workspace)
+  const {state, observations} = workspace
+  const isArchive = workspace.dataset === 'archive'
+  const anchor = workspaceDay(workspace)
   const [toast, setToast] = useState('')
   const [systemError, setSystemError] = useState('')
-  const [historyPeriod, changeHistoryPeriod] = useState(() => makePeriod(7))
-  const [reportPeriod, changeReportPeriod] = useState(() => makePeriod(1))
+  const [historyPeriod, changeHistoryPeriod] = useState(() => makePeriod(7, workspaceDay(initial)))
+  const [reportPeriod, changeReportPeriod] = useState(() => makePeriod(1, workspaceDay(initial)))
   const main = useRef<HTMLElement>(null)
   const previousRoute = useRef(rawRoute)
   const [pathname, search] = rawRoute.split('?')
   const [, page, id, secondId] = pathname.split('/')
   const meals = useMemo(() => scenarioMeals(state).slice().sort((a, b) => b.at - a.at), [state])
-  const points = useMemo(() => measurements(state.scenario), [state.scenario])
   const meal = meals.find(item => item.id === id) ?? meals.find(item => item.id === defaultMeal.id) ?? meals[0]
   const left = meals.find(item => item.id === id) ?? meals.find(item => item.id === defaultMeal.id) ?? meals[0]
-  const right = meals.find(item => item.id === secondId && item.id !== left.id) ??
-    meals.find(item => item.id !== left.id && item.title === left.title) ?? meals.find(item => item.id !== left.id) ?? left
+  const right = meals.find(item => item.id === secondId && item.id !== left?.id) ??
+    meals.find(item => item.id !== left.id && item.title === left?.title) ?? meals.find(item => item.id !== left.id) ?? left
   const formMeal = meals.find(item => item.id === id)
-  const anchor = localInput(meals[0].at).slice(0, 10)
   const print = page === 'print'
   const query = new URLSearchParams(search)
   const printPeriod = {from: query.get('from') ?? reportPeriod.from, to: query.get('to') ?? reportPeriod.to, preset: 0}
@@ -66,43 +70,42 @@ function App() {
     const timer = window.setTimeout(() => setToast(''), 3800)
     return () => window.clearTimeout(timer)
   }, [toast])
-  function persist(next: State) {
-    localStorage.setItem(storageKey, JSON.stringify(next))
+  const receive = (next: Workspace) => {
     stateRef.current = next
-    setState(next)
+    setWorkspace(next)
   }
-  const updateSettings = (patch: Partial<State>) => {
+  const mutate = async (action: Action | Upload) => {
     try {
-      persist({...stateRef.current, ...patch})
+      const result = await writeWorkspace(stateRef.current, action)
+      receive(result.workspace)
       setSystemError('')
+      return result
+    } catch (error) {
+      if (error instanceof StorageError && error.workspace) receive(error.workspace)
+      throw error
+    }
+  }
+  const updateSettings = async (action: Action) => {
+    try {
+      await mutate(action)
       return true
     } catch {
-      setSystemError('Не удалось сохранить настройки демо.')
+      setSystemError('Не удалось сохранить настройки демо. Повторите действие.')
       return false
     }
   }
   const open = (mealId: string) => go('analysis/' + mealId)
   const edit = (mealId: string) => go('diary/' + mealId)
   const add = () => go('diary/new')
-  const save = (entry: Meal) => {
-    const prior = meals.find(item => item.id === entry.id)
-    const revisions = {...state.revisions}
-    if (prior && JSON.stringify(prior) === JSON.stringify(entry)) {
-      open(entry.id)
-      return
-    }
-    if (prior) {
-      revisions[entry.id] = [{meal: prior, savedAt: Date.now()}, ...(revisions[entry.id] ?? [])]
-    }
-    const nextMeals = prior ? state.meals.map(item => item.id === entry.id ? entry : item) : [...state.meals, entry]
-    persist({...state, meals: nextMeals, revisions})
+  const save = async (entry: Meal) => {
+    await mutate({type: 'meal', meal: entry})
     changeHistoryPeriod(makePeriod(7, localInput(entry.at).slice(0, 10)))
     open(entry.id)
     setToast('Запись сохранена')
   }
-  const reset = () => {
+  const reset = async () => {
     try {
-      persist(initialState())
+      await mutate({type: 'reset'})
       changeHistoryPeriod(makePeriod(7))
       changeReportPeriod(makePeriod(1))
       open(defaultMeal.id)
@@ -116,7 +119,7 @@ function App() {
   return <div className="app-shell">
     <a className="skip-link" href="#main-content" onClick={event => {event.preventDefault(); main.current?.focus()}}>К содержимому</a>
     <aside className="sidebar screen-only">
-      <a href={url('analysis')} className="brand"><span className="brand-mark"><Activity size={22}/></span><span><strong>После еды</strong><small>Журнал наблюдений</small></span></a>
+      <a href={url('analysis')} className="brand"><span className="brand-mark"><Activity size={22}/></span><span><strong>GlucoDel</strong><small>Глюкоза после еды</small></span></a>
       <nav aria-label="Основная навигация">{navigation.map(item => <a key={item.key} href={url(item.key)} aria-current={item.key === active ? 'page' : undefined}>
         <item.icon size={19}/><span>{item.name}</span>
       </a>)}</nav>
@@ -124,14 +127,16 @@ function App() {
     </aside>
     <div className="workspace">
       <header className="topbar screen-only">
-        <a href={url('analysis')} className="brand mobile-brand"><span className="brand-mark"><Activity size={20}/></span><strong>После еды</strong></a>
-        <span className="topbar-label">Журнал наблюдений</span>
-        <span className="demo-badge"><i/>Демо · синтетические данные</span>
+        <a href={url('analysis')} className="brand mobile-brand"><span className="brand-mark"><Activity size={20}/></span><strong>GlucoDel</strong></a>
+        <span className="topbar-label">Разбор глюкозы при СД1</span>
+        <span className="demo-badge"><i/>{isArchive ? 'Локальный архив' : 'Демо · синтетические данные'}</span>
       </header>
       <main id="main-content" ref={main} tabIndex={-1} className={'content ' + (print ? 'print-route' : '')}>
         {systemError && <p role="alert" className="field-error">{systemError}</p>}
-        {active === 'analysis' && <Analysis key={meal.id} meal={meal} meals={meals} allPoints={points} scenario={state.scenario}
-          sources={() => go('sources')} edit={() => edit(meal.id)} compare={() => go('compare/' + meal.id)} open={open}/>}
+        {active === 'analysis' && (meal ? <Analysis key={meal.id} meal={meal} meals={meals} observations={observations} scenario={state.scenario}
+          sources={() => go('sources')} edit={() => edit(meal.id)} compare={() => go('compare/' + meal.id)} open={open}/>
+          : <><div className="page-intro section-heading"><div><h1>Глюкоза после еды</h1><p>Запишите приём пищи, чтобы сопоставить его с данными архива.</p></div><AddButton onClick={add}/></div>
+            <section className="panel"><Empty>В локальном архиве пока нет приёмов пищи.</Empty></section></>)}
         {active === 'diary' && (id === 'new' || formMeal ? <MealForm key={id} latest={atLocal(anchor + 'T18:00')} meal={formMeal}
           versions={formMeal ? state.revisions[formMeal.id] ?? [] : []} onSave={save} onCancel={() => go('diary')}/>
           : <><div className="page-intro section-heading"><div><h1>Дневник питания</h1><p>Приёмы пищи, порции и состав продуктов.</p></div><AddButton onClick={add}/></div>
@@ -141,15 +146,25 @@ function App() {
           <PeriodPicker value={historyPeriod} change={changeHistoryPeriod} anchor={anchor}/>
           {validPeriod(historyPeriod) && <section className="panel list-panel"><MealRows meals={within(meals, historyBounds.start, historyBounds.end).reverse()} open={open}/></section>}
         </>}
-        {active === 'compare' && <Compare meals={meals} measurements={points} left={left} right={right} choose={(a, b) => go('compare/' + a + '/' + b)}/>}
-        {active === 'report' && <Report period={print ? printPeriod : reportPeriod} change={changeReportPeriod} meals={meals} points={points} scenario={state.scenario}
+        {active === 'compare' && (left && right && left !== right
+          ? <Compare meals={meals} observations={observations} left={left} right={right} choose={(a, b) => go('compare/' + a + '/' + b)}/>
+          : <><div className="page-intro section-heading"><h1>Сравнение эпизодов</h1><AddButton onClick={add}/></div>
+            <section className="panel"><Empty>Добавьте два приёма пищи, чтобы сравнить их на одной шкале.</Empty></section></>)}
+        {active === 'report' && <Report period={print ? printPeriod : reportPeriod} change={changeReportPeriod} meals={meals} observations={observations} scenario={state.scenario} isArchive={isArchive}
           print={print} goPrint={() => go('print?from=' + reportPeriod.from + '&to=' + reportPeriod.to)} goBack={() => {
             changeReportPeriod(printPeriod)
             go('report')
           }} anchor={anchor}/>}
-        {active === 'sources' && <Sources state={state} scenario={scenario => {
-          if (updateSettings({scenario})) setToast(scenarioLabels[scenario])
-        }} connection={connection => updateSettings({connection})} reset={reset}/>}
+        {active === 'sources' && (isArchive
+          ? <Archive observations={observations} upload={async action => {
+            const result = await mutate(action)
+            changeHistoryPeriod(makePeriod(7, workspaceDay(result.workspace)))
+            changeReportPeriod(makePeriod(1, workspaceDay(result.workspace)))
+            return result.imported!
+          }} add={add}/>
+          : <Sources state={state} scenario={async scenario => {
+            if (await updateSettings({type: 'scenario', scenario})) setToast(scenarioLabels[scenario])
+          }} connection={connection => updateSettings({type: 'connection', connection})} reset={reset} local={hasServer}/>)}
         <footer className="page-footer screen-only"><span>Все даты и время указаны по Москве</span><a href={url('sources')}><Radio size={15}/>Источники данных</a></footer>
       </main>
     </div>
@@ -157,4 +172,16 @@ function App() {
   </div>
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App/></StrictMode>)
+const root = createRoot(document.getElementById('root')!)
+const dataset = hasServer && new URLSearchParams(window.location.search).get('workspace') === 'archive' ? 'archive' : 'demo'
+async function start() {
+  if (hasServer) root.render(<main className="content" role="status">Открываем локальный архив…</main>)
+  try {
+    const workspace = await readWorkspace(dataset)
+    root.render(<StrictMode><App initial={workspace}/></StrictMode>)
+  } catch {
+    root.render(<main className="content"><h1>Локальный архив недоступен</h1><p>Запустите сервер и повторите попытку.</p>
+      <button className="button primary" onClick={start}>Повторить</button></main>)
+  }
+}
+void start()

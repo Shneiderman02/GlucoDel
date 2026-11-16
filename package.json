@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": {"node": ">=22.12.0"},
+  "engines": {"node": ">=24.0.0"},
   "scripts": {
     "dev": "vite",
+    "dev:full": "node --disable-warning=ExperimentalWarning server/dev.ts",
+    "test:api": "node --disable-warning=ExperimentalWarning --test server/api.test.ts",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

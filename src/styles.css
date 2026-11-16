@@ -324,3 +324,23 @@ thead th { background: var(--subtle); position: sticky; top: 0; }
   .table-wrap { overflow: visible; max-height: none; }
   thead th { position: static; }
 }
+.episode-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; padding: 11px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.episode-facts dt { color: var(--muted); font-size: 11px; font-weight: 590; }
+.episode-facts dd { font-size: 14px; font-weight: 710; overflow-wrap: anywhere; }
+.episode-facts small { display: block; color: var(--muted); font-size: 10px; }
+.episode-facts .incomplete { color: var(--amber); }
+.archive-link { margin-block: 0 16px; }
+.archive-fields { display: grid; gap: 10px; margin-top: 14px; }
+.archive-fields label { display: grid; gap: 4px; font-weight: 590; }
+.archive-fields input[type=file] { padding: 7px; }
+.archive-fields .button { justify-self: start; }
+.archive-result { margin-top: 10px; color: var(--accent); }
+.archive-format { overflow-wrap: anywhere; margin-top: 13px; }
+.archive-format summary { cursor: pointer; color: var(--accent); font-weight: 650; }
+.archive-format code { display: block; margin: 8px 0; font-size: 12px; }
+@media (max-width: 640px) {
+  .episode-facts { gap: 8px; padding-block: 7px; margin-top: 10px; }
+  .episode-facts dd { font-size: 13px; line-height: 1.3; }
+}
+.premeal { background: var(--subtle); padding: 10px 14px; }
+.premeal h3 { font-size: 13px; }

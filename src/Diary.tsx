@@ -11,7 +11,7 @@ const toDraft = (product: Product): DraftProduct => ({
 })
 
 export function MealForm({meal, versions, onSave, onCancel, latest}: {
-  meal?: Meal; versions: Revision[]; onSave: (meal: Meal) => void; onCancel: () => void; latest: number;
+  meal?: Meal; versions: Revision[]; onSave: (meal: Meal) => Promise<void>; onCancel: () => void; latest: number;
 }) {
   const [title, setTitle] = useState(meal?.title ?? '')
   const [when, setWhen] = useState(localInput(meal?.at ?? latest))
@@ -19,13 +19,14 @@ export function MealForm({meal, versions, onSave, onCancel, latest}: {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [storageError, setStorageError] = useState('')
   const submitting = useRef(false)
+  const [saving, setSaving] = useState(false)
   const toProduct = (product: DraftProduct): Product => ({
     id: product.id, name: product.name.trim(), grams: asNumber(product.grams) ?? 0,
     protein: asNumber(product.protein), fat: asNumber(product.fat), carbs: asNumber(product.carbs), energy: asNumber(product.energy),
   })
   const update = (id: string, field: keyof DraftProduct, value: string) =>
     setProducts(current => current.map(product => product.id === id ? {...product, [field]: value} : product))
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (submitting.current) return
     const form = event.currentTarget
@@ -48,11 +49,15 @@ export function MealForm({meal, versions, onSave, onCancel, latest}: {
       return
     }
     submitting.current = true
+    setSaving(true)
+    setStorageError('')
     try {
-      onSave({id: meal?.id ?? crypto.randomUUID(), title: title.trim(), at: atLocal(when), products: products.map(toProduct)})
-    } catch {
-      setStorageError('Браузер не сохранил запись. Проверьте доступ к локальному хранилищу и повторите попытку.')
+      await onSave({id: meal?.id ?? crypto.randomUUID(), title: title.trim(), at: atLocal(when), products: products.map(toProduct)})
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : 'Не удалось сохранить запись.')
+    } finally {
       submitting.current = false
+      setSaving(false)
     }
   }
   const errorProps = (id: string) => ({id, 'aria-invalid': Boolean(errors[id]), 'aria-describedby': errors[id] ? id + '-error' : undefined})
@@ -96,7 +101,7 @@ export function MealForm({meal, versions, onSave, onCancel, latest}: {
       <section className="entry-total"><h2>Итого на порцию</h2>
         {preview.every(product => product !== null) ? <Nutrition products={preview}/> : <p className="muted">Укажите съеденную массу каждого продукта.</p>}
       </section>
-      <div className="form-actions"><button type="submit" className="button primary">Сохранить запись</button><button type="button" className="button quiet" onClick={onCancel}>Отмена</button></div>
+      <div className="form-actions"><button type="submit" className="button primary" disabled={saving}>{saving ? 'Сохраняем…' : 'Сохранить запись'}</button><button type="button" className="button quiet" onClick={onCancel}>Отмена</button></div>
     </form>
     {meal && <section className="panel revisions"><h2>История изменений</h2>
       {versions.length ? versions.map((revision, index) => <details key={index}><summary>Предыдущая версия {versions.length - index} · {revision.meal.title}</summary>

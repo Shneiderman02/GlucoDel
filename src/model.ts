@@ -8,7 +8,7 @@ export const unit = (key: Nutrient) => key === 'energy' ? 'ккал' : 'г'
 export type Product = {id: string; name: string; grams: number} & Record<Nutrient, number | null>
 export type Meal = {id: string; title: string; at: number; products: Product[]}
 export type Revision = {meal: Meal; savedAt: number}
-export type CGM = {id: string; at: number; received: number; value: number | null; source: string}
+export type CGM = {id: string; at: number; received: number | null; value: number | null; source: string}
 export type Insulin = {id: string; at: number; end?: number; title: string; type: 'basal' | 'bolus'; actual: number | null; planned?: number; status: 'given' | 'interrupted' | 'cancelled'; mode: string; source: string}
 export type Context = {id: string; at: number; title: string; description: string; source: string}
 export type Scenario = 'full' | 'delay' | 'gap' | 'partial'
@@ -129,24 +129,24 @@ export function gapRanges(points: CGM[]) {
 
 export const forecastReason = (scenario: Scenario, points: CGM[], meal?: Meal) => {
   if (!points.some(point => point.value !== null)) return 'В выбранном окне нет измерений CGM.'
-  if (scenario === 'delay' && points.some(point => point.received - point.at > 5 * minute)) return 'Измерения CGM получены с задержкой 45 мин.'
+  if (scenario === 'delay' && points.some(point => point.received !== null && point.received - point.at > 5 * minute)) return 'Измерения CGM получены с задержкой 45 мин.'
   if (gapRanges(points).length) return 'В выбранном окне есть пробел измерений CGM.'
   if (meal?.products.some(product => nutrients.some(key => product[key] === null))) return 'Состав еды указан не полностью.'
   return 'Историческая выгрузка не обновляется в реальном времени.'
 }
 
 export type TimelineEvent = {id: string; at: number; end?: number; title: string; category: 'meal' | 'insulin' | 'activity'; marker: string; source: string; description: string; mealId?: string}
-export function timeline(meals: Meal[], start: number, end: number): TimelineEvent[] {
+export function timeline(meals: Meal[], start: number, end: number, doses: Insulin[], activities: Context[]): TimelineEvent[] {
   return within<TimelineEvent>([
     ...meals.map(meal => ({
       id: meal.id, at: meal.at, title: meal.title, category: 'meal' as const, marker: 'meal', source: manual,
       description: number(nutrition(meal.products).grams) + ' г · ' + meal.products.map(product => product.name).join(', '), mealId: meal.id,
     })),
-    ...insulin.map(event => ({
+    ...doses.map(event => ({
       id: event.id, at: event.at, end: event.end, title: event.title, category: 'insulin' as const,
       marker: event.status === 'cancelled' ? 'cancel' : event.type, source: event.source,
       description: insulinText(event) + ' · режим: ' + event.mode.toLowerCase(),
     })),
-    ...context.map(event => ({...event, category: 'activity' as const, marker: 'activity'})),
+    ...activities.map(event => ({...event, category: 'activity' as const, marker: 'activity'})),
   ], start, end)
 }
