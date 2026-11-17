@@ -6,7 +6,7 @@
 
 GlucoDel собирает контекст приёма пищи на общей шкале. Вы видите показания CGM, состав и размер порции, фактическую подачу инсулина и события вроде прогулки или перекуса. Два похожих приёма пищи можно сравнить от начала еды и посмотреть, чем отличались исходная глюкоза, подача и обстоятельства.
 
-[Открыть демо GlucoDel](https://shneiderman02.github.io/posle-edy/) · [Архив за сентябрь](https://shneiderman02.github.io/posle-edy/?workspace=study#/history)
+[Открыть демо GlucoDel](https://shneiderman02.github.io/GlucoDel/) · [Архив за сентябрь](https://shneiderman02.github.io/GlucoDel/?workspace=study#/history)
 
 ![Разбор обеда в GlucoDel с графиком CGM и событиями помпы](docs/screenshots/analysis-1440.png)
 
