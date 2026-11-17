@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {test} from 'node:test'
 import {createApi} from './api.ts'
-import {type Workspace} from '../src/workspace.ts'
+import {newWorkspace, type Workspace} from '../src/workspace.ts'
 
 const cgm = 'measured_at,glucose_mmol_l\n2026-11-16T10:00:00Z,6.2\n2026-11-16T13:15:00+03:00,8.1'
 const pump = 'event_id;started_at;ended_at;type;actual_units;planned_units;status;mode\n' +
@@ -20,8 +20,12 @@ type Result = {workspace: Workspace; message?: string; imported?: {added: number
 test('HTTP API сохраняет архив, проверяет импорт и изолирует демо', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'glucodel-'))
   const path = join(directory, 'workspace.sqlite')
-  const start = async () => {
-    const server = createApi(path)
+  const study = newWorkspace('study')
+  study.featuredMealId = 'study-meal'
+  study.state.meals = [{id: 'study-meal', title: 'Запись из исследования', at: entry.at, products: [], loggedCarbs: 70}]
+  study.observations.points = [{id: 'study-cgm', at: entry.at, value: 7.4, received: null, source: 'AZT1D'}]
+  const start = async (seed?: Workspace) => {
+    const server = createApi(path, undefined, undefined, seed)
     server.listen(0, '127.0.0.1')
     await once(server, 'listening')
     const address = server.address()
@@ -37,8 +41,8 @@ test('HTTP API сохраняет архив, проверяет импорт и
   }
   let app: Awaited<ReturnType<typeof start>> | undefined
   try {
-    app = await start()
-    const get = async (dataset: 'demo' | 'archive') => {
+    app = await start(study)
+    const get = async (dataset: 'demo' | 'archive' | 'study') => {
       const response = await fetch(app!.base + '/api/' + dataset)
       assert.equal(response.status, 200)
       return (await response.json() as Result).workspace
@@ -82,6 +86,9 @@ test('HTTP API сохраняет архив, проверяет импорт и
     await post(2, {type: 'meal', meal: entry})
     await post(3, {type: 'meal', meal: {...entry, title: 'Исправленный архивный обед'}})
     await post(4, {type: 'reset'}, 400)
+    const studyWrite = await fetch(app.base + '/api/study', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({version: 0, action: {type: 'meal', meal: entry}})})
+    assert.equal(studyWrite.status, 405)
 
     await app.close()
     app = await start()
@@ -90,6 +97,8 @@ test('HTTP API сохраняет архив, проверяет импорт и
     assert.equal(archive.state.meals[0].title, 'Исправленный архивный обед')
     assert.deepEqual(archive.state.revisions[entry.id][0].meal, entry)
     assert.equal(archive.observations.insulin.length, 2)
+    assert.deepEqual(await get('study'), study)
+    assert(!archive.state.meals.some(meal => meal.id === 'study-meal'))
 
     const demo = await get('demo')
     assert(demo.state.meals.some(meal => meal.id === 'lunch-16'))

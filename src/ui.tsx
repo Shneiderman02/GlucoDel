@@ -1,5 +1,5 @@
 import {CalendarDays, ChevronRight, CircleAlert, FileText, Plus} from 'lucide-react'
-import {type Meal, type Product, date, demoDay, localInput, number, nutrition, nutrients, labels, unit, time, atLocal} from './model'
+import {type Meal, type Product, date, demoDay, localInput, number, nutrition, nutrients, labels, unit, time, atLocal, loggedCarbsDescription} from './model'
 
 export function Nutrition({products}: {products: Product[]}) {
   const {totals} = nutrition(products)
@@ -29,12 +29,15 @@ export const periodBounds = (period: Period) => ({
 })
 export const validPeriod = (period: Period) => Boolean(period.from && period.to && period.from <= period.to)
 
-export function PeriodPicker({value, change, anchor}: {value: Period; change: (value: Period) => void; anchor: string}) {
+export function PeriodPicker({value, change, anchor, fullPeriod}: {
+  value: Period; change: (value: Period) => void; anchor: string; fullPeriod?: Pick<Period, 'from' | 'to'>
+}) {
   return <div className="period-tools">
     <div className="segmented" aria-label="Период">
       {[[1, 'День'], [7, '7 дней'], [14, '14 дней'], [30, '30 дней']].map(([days, label]) =>
         <button type="button" key={days} aria-pressed={value.preset === days} onClick={() => change(makePeriod(Number(days), anchor))}>{label}</button>)}
     </div>
+    {fullPeriod && <button className="button secondary" type="button" onClick={() => change({...fullPeriod, preset: 0})}>Весь период</button>}
     <div className="date-inputs">
       <label><span>С</span><input aria-label="Дата начала" type="date" required value={value.from} onChange={event => change({...value, from: event.target.value, preset: 0})}/></label>
       <label><span>По</span><input aria-label="Дата окончания" type="date" required value={value.to} onChange={event => change({...value, to: event.target.value, preset: 0})}/></label>
@@ -51,12 +54,13 @@ export function MealRows({meals, open, edit}: {meals: Meal[]; open: (id: string)
         <div className="row-content">
           <span className="row-icon"><CalendarDays size={19}/></span>
           <div><small>{date(meal.at)} · {time(meal.at)}</small><h3>{meal.title}</h3>
-            <p>{number(grams)} г · {totals.carbs.value === null ? 'Углеводы неизвестны' : number(totals.carbs.value) + ' г углеводов'}
+            {meal.loggedCarbs === undefined ? <p>{number(grams)} г · {totals.carbs.value === null ? 'Углеводы неизвестны' : number(totals.carbs.value) + ' г углеводов'}
               {Object.values(totals).some(total => !total.complete) && <span className="incomplete"> · неполные данные</span>}</p>
+              : <p>{loggedCarbsDescription(meal.loggedCarbs)}</p>}
           </div>
         </div>
         <div className="row-actions">
-          {edit && <button className="button quiet" onClick={() => edit(meal.id)} aria-label={'Изменить ' + meal.title}>Изменить</button>}
+          {edit && meal.loggedCarbs === undefined && <button className="button quiet" onClick={() => edit(meal.id)} aria-label={'Изменить ' + meal.title}>Изменить</button>}
           <button className="button quiet" onClick={() => open(meal.id)} aria-label={'Открыть разбор ' + meal.title}>Разбор <ChevronRight size={16}/></button>
         </div>
       </li>

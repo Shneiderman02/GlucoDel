@@ -34,12 +34,19 @@ async function readCommand(req: IncomingMessage): Promise<Command> {
   return body
 }
 
-export function createApi(path: string, nightscout?: Nightscout, interval = 5 * 60_000) {
+export function createApi(path: string, nightscout?: Nightscout, interval = 5 * 60_000, study?: Workspace) {
   const db = new DatabaseSync(path)
   db.exec('CREATE TABLE IF NOT EXISTS workspaces (name TEXT PRIMARY KEY, version INTEGER NOT NULL, data TEXT NOT NULL)')
   const read = db.prepare('SELECT version, data FROM workspaces WHERE name = ?')
   const create = db.prepare('INSERT OR IGNORE INTO workspaces (name, version, data) VALUES (?, 0, ?)')
   const write = db.prepare('UPDATE workspaces SET data = ?, version = ? WHERE name = ? AND version = ?')
+  if (study) {
+    create.run('study', JSON.stringify(study))
+    if (study.replayPeriod) {
+      db.prepare(`UPDATE workspaces SET data = ?, version = 0
+        WHERE name = 'study' AND json_extract(data, '$.replayPeriod') IS NULL`).run(JSON.stringify(study))
+    }
+  }
   const get = (dataset: Dataset) => {
     let row = read.get(dataset)
     if (!row) {
@@ -83,6 +90,11 @@ export function createApi(path: string, nightscout?: Nightscout, interval = 5 * 
     return inFlight
   }
   const forClient = ({nightscoutImport, ...workspace}: SavedWorkspace): Workspace => {
+    if (workspace.dataset === 'study') {
+      return {...workspace, observations: {
+        ...workspace.observations, points: insertCgmGaps(workspace.observations.points),
+      }}
+    }
     if (workspace.dataset !== 'archive') return workspace
     const latestMeasurement = workspace.observations.points.findLast(point => point.value !== null && point.id.startsWith('ns-cgm-'))?.at
     const status: NightscoutStatus = {configured: !!nightscout, syncing: !!inFlight, lastSuccess: nightscoutImport?.lastSuccess,
@@ -100,8 +112,15 @@ export function createApi(path: string, nightscout?: Nightscout, interval = 5 * 
       if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host ?? '')) return response(res, 403, {message: 'Локальный адрес обязателен.'})
       const url = new URL(req.url ?? '/', 'http://127.0.0.1')
       const syncRoute = url.pathname === '/api/archive/nightscout'
-      const dataset = url.pathname === '/api/demo' ? 'demo' : url.pathname === '/api/archive' || syncRoute ? 'archive' : null
+      const dataset = url.pathname === '/api/demo' ? 'demo' : url.pathname === '/api/archive' || syncRoute ? 'archive'
+        : url.pathname === '/api/study' ? 'study' : null
       if (!dataset) return response(res, 404, {message: 'Маршрут не найден.'})
+      if (dataset === 'study') {
+        if (!read.get(dataset)) return response(res, 404, {message: 'Выборка AZT1D ещё не загружена.'})
+        if (req.method === 'POST' && !get(dataset).replayPeriod) {
+          return response(res, 405, {message: 'Исследовательские записи доступны только для чтения.'})
+        }
+      }
       if (req.method === 'GET' && !syncRoute) return response(res, 200, {workspace: forClient(get(dataset))})
       if (req.method !== 'POST') return response(res, 405, {message: 'Поддерживаются GET и POST.'})
       if (req.headers['content-type']?.split(';')[0] !== 'application/json') return response(res, 415, {message: 'Ожидается application/json.'})

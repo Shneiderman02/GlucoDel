@@ -6,7 +6,7 @@ export type Nutrient = typeof nutrients[number]
 export const labels = {protein: 'Белки', fat: 'Жиры', carbs: 'Углеводы', energy: 'Энергия'}
 export const unit = (key: Nutrient) => key === 'energy' ? 'ккал' : 'г'
 export type Product = {id: string; name: string; grams: number} & Record<Nutrient, number | null>
-export type Meal = {id: string; title: string; at: number; products: Product[]}
+export type Meal = {id: string; title: string; at: number; products: Product[]; loggedCarbs?: number}
 export type Revision = {meal: Meal; savedAt: number}
 export type CGM = {id: string; at: number; received: number | null; value: number | null; source: string}
 export type Insulin = {id: string; at: number; end?: number; title: string; type: 'basal' | 'bolus'; actual: number | null; planned?: number; reported?: number; status: 'given' | 'interrupted' | 'cancelled' | 'reported'; mode: string; source: string}
@@ -26,6 +26,11 @@ export const localInput = (value: number) => new Date(value + 180 * minute).toIS
 export const within = <T extends {at: number}>(records: T[], start: number, end: number) =>
   records.filter(row => row.at >= start && row.at <= end).sort((a, b) => a.at - b.at)
 export const asNumber = (value: string) => value.trim() === '' ? null : Number(value)
+export const loggedCarbsDescription = (grams: number) => number(grams) + ' г углеводов по записи помпы'
+export const studySource = 'AZT1D · Tandem t:slim X2'
+export const studyBadge = 'AZT1D · исследовательские данные'
+export const studyTime = 'Время из выгрузки · часовой пояс не указан'
+export const studyLimit = 'Углеводы записаны в помпе. Состав блюда, съеденная порция и точное время еды неизвестны.'
 export function nutrition(products: Product[]) {
   return {
     grams: products.reduce((sum, product) => sum + product.grams, 0),
@@ -140,8 +145,11 @@ export type TimelineEvent = {id: string; at: number; end?: number; title: string
 export function timeline(meals: Meal[], start: number, end: number, doses: Insulin[], activities: Context[]): TimelineEvent[] {
   return within<TimelineEvent>([
     ...meals.map(meal => ({
-      id: meal.id, at: meal.at, title: meal.title, category: 'meal' as const, marker: 'meal', source: manual,
-      description: number(nutrition(meal.products).grams) + ' г · ' + meal.products.map(product => product.name).join(', '), mealId: meal.id,
+      id: meal.id, at: meal.at, title: meal.title, category: 'meal' as const, marker: 'meal',
+      source: meal.loggedCarbs === undefined ? manual : studySource,
+      description: meal.loggedCarbs === undefined
+        ? number(nutrition(meal.products).grams) + ' г · ' + meal.products.map(product => product.name).join(', ')
+        : loggedCarbsDescription(meal.loggedCarbs), mealId: meal.id,
     })),
     ...doses.map(event => ({
       id: event.id, at: event.at, end: event.end, title: event.title, category: 'insulin' as const,

@@ -24,7 +24,8 @@ export function Sources({state, scenario, connection, reset, local}: {
   }
   return <>
     <div className="page-intro"><h1>Источники данных</h1><p>Переключайте демонстрационные сценарии и проверяйте состояние данных.</p></div>
-    {local && <p className="archive-link"><a className="button secondary" href="?workspace=archive#/sources"><Database size={16}/>Открыть локальный архив</a></p>}
+    {local && <p className="archive-link row-actions"><a className="button secondary" href="?workspace=study#/history"><Database size={16}/>Открыть выборку AZT1D</a>
+      <a className="button secondary" href="?workspace=archive#/sources"><Database size={16}/>Открыть локальный архив</a></p>}
     <div className="source-grid">
       <section className="panel source-panel"><span className="row-icon"><Database size={19}/></span><h2>Историческая выгрузка</h2><p>Демо-CGM и демо-помпа · время по Москве</p>
         <Notice>Историческая выгрузка не обновляется в реальном времени.</Notice>

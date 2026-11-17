@@ -1,13 +1,16 @@
 import {type Meal, type State, type Scenario, type Connection, type CGM, type Insulin, type Context,
   initialState, insulin, context, measurements, scenarioMeals, localInput, nutrients} from './model.ts'
 
-export type Dataset = 'demo' | 'archive'
+export type Dataset = 'demo' | 'archive' | 'study'
 export type Observations = {points: CGM[]; insulin: Insulin[]; context: Context[]}
 export type NightscoutStatus = {
   configured: boolean; syncing: boolean; lastSuccess?: number; latestMeasurement?: number;
   changed?: number; error?: string;
 }
-export type Workspace = {dataset: Dataset; version: number; state: State; observations: Observations; nightscout?: NightscoutStatus}
+export type Workspace = {
+  dataset: Dataset; version: number; state: State; observations: Observations; nightscout?: NightscoutStatus
+  featuredMealId?: string; replayPeriod?: {from: string; to: string}
+}
 export type Action =
   | {type: 'meal'; meal: Meal}
   | {type: 'scenario'; scenario: Scenario}
@@ -35,6 +38,13 @@ export function applyAction(workspace: Workspace, action: Action): Workspace {
   if (action.type !== 'meal') throw new Error('Неизвестное действие.')
   const meal = validateMeal(action.meal)
   const prior = scenarioMeals(state).find(item => item.id === meal.id)
+  if (workspace.replayPeriod) {
+    if (prior?.loggedCarbs !== undefined) throw new Error('Запись из журнала помпы доступна для просмотра.')
+    const day = localInput(meal.at).slice(0, 10)
+    if (day < workspace.replayPeriod.from || day > workspace.replayPeriod.to) {
+      throw new Error('Выберите дату с 1 сентября по 1 октября 2026 года.')
+    }
+  }
   if (prior && JSON.stringify(prior) === JSON.stringify(meal)) return workspace
   const revisions = prior ? {...state.revisions, [meal.id]: [{meal: prior, savedAt: Date.now()}, ...(state.revisions[meal.id] ?? [])]} : state.revisions
   const meals = prior ? state.meals.map(item => item.id === meal.id ? meal : item) : [...state.meals, meal]

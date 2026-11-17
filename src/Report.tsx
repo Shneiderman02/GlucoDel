@@ -1,11 +1,12 @@
 import {ArrowLeft, Printer, FileDown} from 'lucide-react'
-import {type Meal, type Scenario, date, forecastReason, gapRanges, insulinText, number, nutrition, time, within} from './model'
+import {type Meal, type Scenario, date, forecastReason, gapRanges, insulinText, number, nutrition, time, within, studyBadge, studyTime, studyLimit, loggedCarbsDescription} from './model'
 import type {Observations} from './workspace'
 import {Empty, Notice, PeriodPicker, type Period, periodBounds, validPeriod, Nutrition} from './ui'
 
-export function Report({period, change, meals, observations, scenario, isArchive, print, goPrint, goBack, anchor}: {
-  period: Period; change: (period: Period) => void; meals: Meal[]; observations: Observations; scenario: Scenario; isArchive: boolean;
+export function Report({period, change, meals, observations, scenario, isArchive, isStudy, print, goPrint, goBack, anchor, replay}: {
+  period: Period; change: (period: Period) => void; meals: Meal[]; observations: Observations; scenario: Scenario; isArchive: boolean; isStudy: boolean;
   print: boolean; goPrint: () => void; goBack: () => void; anchor: string;
+  replay?: Pick<Period, 'from' | 'to'>;
 }) {
   const {start, end} = periodBounds(period)
   const food = within(meals, start, end)
@@ -21,26 +22,30 @@ export function Report({period, change, meals, observations, scenario, isArchive
       <p>{print ? 'В диалоге печати выберите «Сохранить как PDF».' : 'Выберите период и проверьте, какие данные войдут в отчёт.'}</p></div>
       <button className="button primary" disabled={!valid} onClick={print ? () => window.print() : goPrint}>{print ? <Printer size={18}/> : <FileDown size={18}/>}Сохранить отчёт</button></div>
     </div>
-    {!print && <PeriodPicker value={period} change={change} anchor={anchor}/>}
+    {!print && <PeriodPicker value={period} change={change} anchor={anchor} fullPeriod={replay}/>}
     {valid && <article className="panel report-sheet" aria-label="Предпросмотр отчёта">
-      <header><span className="demo-badge"><i/>{isArchive ? 'Локальный архив' : 'Демо · синтетические данные'}</span><h2>Отчёт о питании и глюкозе</h2>
-        <p>{period.from} — {period.to} · МСК (UTC+3)</p></header>
+      <header><span className="demo-badge"><i/>{isStudy ? studyBadge : isArchive ? 'Локальный архив' : 'Демо · синтетические данные'}</span><h2>Отчёт о питании и глюкозе</h2>
+        <p>{period.from} — {period.to} · {replay ? 'Даты AZT1D сдвинуты' : isStudy ? studyTime : 'МСК (UTC+3)'}</p></header>
+      {replay && <p>Исходный период AZT1D — 1 февраля — 2 марта 2024 года. Приёмы пищи из дневника помечены как ручной ввод.</p>}
       <section><h3>Ограничения данных</h3><p>Историческая выгрузка не обновляется в реальном времени.</p>
-        <Notice>{forecastReason(scenario, glucose)}{gaps.length > 0 && ' Пробел CGM: ' + gaps.map(gap => date(gap.start) + ', ' + time(gap.start) + '–' + time(gap.end)).join('; ') + '.'}</Notice>
+        {isStudy && <p>{studyLimit} Отчёт не включает базал и физическую активность. Источник: AZT1D, DOI 10.17632/gk9m674wcx.1, CC BY 4.0.</p>}
+        {(!isStudy || gaps.length > 0) && <Notice>{!isStudy && forecastReason(scenario, glucose)}{gaps.length > 0 && ' Пробел CGM: ' + gaps.map(gap => date(gap.start) + ', ' + time(gap.start) + '–' + time(gap.end)).join('; ') + '.'}</Notice>}
       </section>
       {!food.length && !glucose.length && !doses.length && !activities.length && <Empty>За выбранный период нет наблюдений.</Empty>}
-      <section><h3>Еда · Дневник</h3>{food.length ? food.map(meal => <div className="report-meal" key={meal.id}>
-        <p><strong>{date(meal.at)} · {time(meal.at)} · {meal.title}</strong> · {number(nutrition(meal.products).grams)} г</p>
+      <section><h3>{isStudy ? 'Записи об углеводах · AZT1D' : 'Еда · Дневник'}</h3>{food.length ? food.map(meal => <div className="report-meal" key={meal.id}>
+        {meal.loggedCarbs !== undefined ? <p><strong>{date(meal.at)} · {time(meal.at)}</strong> · {loggedCarbsDescription(meal.loggedCarbs)}</p> : <>
+        <p><strong>{date(meal.at)} · {time(meal.at)} · {meal.title}</strong> · {number(nutrition(meal.products).grams)} г{replay && ' · ручной ввод'}</p>
         <p>{meal.products.map(product => product.name + ' ' + number(product.grams) + ' г').join(' · ')}</p><Nutrition products={meal.products}/>
+        </>}
       </div>) : <p>Записей о еде нет.</p>}</section>
-      <section><h3>Инсулин · {isArchive ? 'Источники архива' : 'Демо-помпа'}</h3>{doses.length ? <ul className="plain-list">{doses.map(dose =>
+      <section><h3>Инсулин · {isStudy ? 'AZT1D' : isArchive ? 'Источники архива' : 'Демо-помпа'}</h3>{doses.length ? <ul className="plain-list">{doses.map(dose =>
         <li key={dose.id}>{date(dose.at)} · {time(dose.at)}{dose.end ? '–' + time(dose.end) : ''} · {dose.title} · {insulinText(dose)} · {dose.source}</li>
       )}</ul> : <p>Нет данных о фактической подаче.</p>}</section>
       {activities.length > 0 && <section><h3>Активность · Дневник</h3><ul className="plain-list">{activities.map(activity => <li key={activity.id}>{date(activity.at)} · {time(activity.at)} · {activity.title} · {activity.description}</li>)}</ul></section>}
-      <section><h3>Глюкоза · {isArchive ? 'Источники архива' : 'Демо-CGM'}</h3>
+      <section><h3>Глюкоза · {isStudy ? 'AZT1D' : isArchive ? 'Источники архива' : 'Демо-CGM'}</h3>
         {glucose.length ? <div className="table-wrap" role="region" tabIndex={0} aria-label="Таблица измерений глюкозы">
-          <table><thead><tr><th scope="col">Дата и время</th><th scope="col">Глюкоза, ммоль/л</th><th scope="col">Получено, МСК</th>{isArchive && <th scope="col">Источник</th>}</tr></thead>
-            <tbody>{glucose.map(point => <tr key={point.id}><td>{date(point.at)} · {time(point.at)}</td><td>{point.value === null ? 'Пробел CGM' : number(point.value)}</td><td>{point.value === null || point.received === null ? '—' : time(point.received)}</td>{isArchive && <td>{point.value === null ? '—' : point.source}</td>}</tr>)}</tbody>
+          <table><thead><tr><th scope="col">Дата и время</th><th scope="col">Глюкоза, ммоль/л</th>{!isStudy && <th scope="col">Получено, МСК</th>}{(isArchive || isStudy) && <th scope="col">Источник</th>}</tr></thead>
+            <tbody>{glucose.map(point => <tr key={point.id}><td>{date(point.at)} · {time(point.at)}</td><td>{point.value === null ? 'Пробел CGM' : number(point.value)}</td>{!isStudy && <td>{point.value === null || point.received === null ? '—' : time(point.received)}</td>}{(isArchive || isStudy) && <td>{point.value === null ? '—' : point.source}</td>}</tr>)}</tbody>
           </table>
         </div> : <p>За период нет измерений CGM.</p>}
       </section>

@@ -10,8 +10,9 @@ const toDraft = (product: Product): DraftProduct => ({
   fat: String(product.fat ?? ''), carbs: String(product.carbs ?? ''), energy: String(product.energy ?? ''),
 })
 
-export function MealForm({meal, versions, onSave, onCancel, latest}: {
+export function MealForm({meal, versions, onSave, onCancel, latest, replayPeriod}: {
   meal?: Meal; versions: Revision[]; onSave: (meal: Meal) => Promise<void>; onCancel: () => void; latest: number;
+  replayPeriod?: {from: string; to: string};
 }) {
   const [title, setTitle] = useState(meal?.title ?? '')
   const [when, setWhen] = useState(localInput(meal?.at ?? latest))
@@ -33,6 +34,9 @@ export function MealForm({meal, versions, onSave, onCancel, latest}: {
     const nextErrors: Record<string, string> = {}
     if (!title.trim()) nextErrors.title = 'Укажите название приёма пищи.'
     if (!Number.isFinite(atLocal(when)) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(when)) nextErrors.when = 'Укажите дату и время.'
+    if (replayPeriod && !nextErrors.when && (when.slice(0, 10) < replayPeriod.from || when.slice(0, 10) > replayPeriod.to)) {
+      nextErrors.when = 'Выберите дату с 1 сентября по 1 октября 2026 года.'
+    }
     products.forEach(draft => {
       const product = toProduct(draft)
       if (!product.name) nextErrors[draft.id + '-name'] = 'Укажите название продукта.'
@@ -71,7 +75,7 @@ export function MealForm({meal, versions, onSave, onCancel, latest}: {
     })
   return <div className="form-wrap">
     <button className="button quiet back" onClick={onCancel}><ArrowLeft size={17}/>К дневнику</button>
-    <div className="page-intro"><h1>{meal ? 'Изменить запись' : 'Добавить еду'}</h1><p>Время по Москве · состав из расчёта на 100 г</p></div>
+    <div className="page-intro"><h1>{meal ? 'Изменить запись' : 'Добавить еду'}</h1><p>{replayPeriod ? 'Время на шкале AZT1D' : 'Время по Москве'} · состав из расчёта на 100 г</p></div>
     <form noValidate className="panel entry-form" onSubmit={submit}>
       {Object.keys(errors).length > 0 && <p role="alert" className="field-error">Проверьте выделенные поля.</p>}
       {storageError && <p role="alert" className="field-error">{storageError}</p>}
