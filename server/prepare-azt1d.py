@@ -113,6 +113,7 @@ def convert(rows):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--csv', type=Path, help='Use Subject 19.csv from release 1 if already downloaded')
+    parser.add_argument('--pages', action='store_true', help='Build the public snapshot directly from the research CSV')
     options = parser.parse_args()
     if options.csv:
         data = options.csv.read_text(encoding='utf-8-sig')
@@ -120,10 +121,22 @@ def main():
         with ZipFile(RemoteZip()) as archive:
             data = archive.read(MEMBER).decode('utf-8-sig')
     workspace = convert(csv.DictReader(io.StringIO(data)))
-    output = Path(__file__).resolve().parent.parent / '.glucodel' / 'azt1d.json'
-    output.parent.mkdir(exist_ok=True)
-    output.write_text(json.dumps(workspace, ensure_ascii=False), encoding='utf-8')
+    project = Path(__file__).resolve().parent.parent
     valid_points = sum(point['value'] is not None for point in workspace['observations']['points'])
+    if options.pages:
+        output = project / 'public' / 'data' / 'azt1d-september-2026.json'
+        snapshot = {
+            'period': workspace['replayPeriod'],
+            'featuredMealId': workspace['featuredMealId'],
+            'meals': workspace['state']['meals'],
+            'boluses': workspace['observations']['insulin'],
+            'readings': [[p['at'], p['value']] for p in workspace['observations']['points']],
+        }
+    else:
+        output = project / '.glucodel' / 'azt1d.json'
+        snapshot = workspace
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(snapshot, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
     print(f"Prepared {valid_points} CGM readings, "
           f"{len(workspace['observations']['insulin'])} boluses, {len(workspace['state']['meals'])} carb entries")
 

@@ -172,13 +172,17 @@ function App({initial}: {initial: Workspace}) {
       </header>
       <main id="main-content" ref={main} tabIndex={-1} className={'content ' + (print ? 'print-route' : '')}>
         {systemError && <p role="alert" className="field-error">{systemError}</p>}
+        {!hasServer && !isStudy && active === 'analysis' && <p className="archive-link screen-only">
+          <a className="button secondary" href="?workspace=study#/history"><Clock3 size={16}/>Открыть архив за сентябрь</a>
+        </p>}
         {active === 'analysis' && (meal ? <Analysis key={meal.id} meal={meal} meals={meals} observations={observations} scenario={state.scenario}
           sources={() => go('sources')} edit={editable(meal) ? () => edit(meal.id) : undefined} compare={() => go('compare/' + meal.id)} open={open} replay={!!replay}/>
           : <><div className="page-intro section-heading"><div><h1>Глюкоза после еды</h1><p>Запишите приём пищи, чтобы сопоставить его с данными архива.</p></div><AddButton onClick={add}/></div>
             <section className="panel"><Empty>В локальном архиве пока нет приёмов пищи.</Empty></section></>)}
         {active === 'diary' && (editable(formMeal) && (id === 'new' || formMeal) ? <MealForm key={id} latest={atLocal((replay ? day?.iso ?? replay.to : anchor) + 'T18:00')} meal={formMeal} replayPeriod={replay}
           versions={formMeal ? state.revisions[formMeal.id] ?? [] : []} onSave={save} onCancel={() => go('diary')}/>
-          : <><div className="page-intro section-heading"><div><h1>{isStudy && !replay ? 'Записи об углеводах' : 'Дневник питания'}</h1><p>{replay ? 'Записи помпы и добавленные вручную приёмы пищи.' : isStudy ? studyLimit : 'Приёмы пищи, порции и состав продуктов.'}</p></div>{canWrite && <AddButton onClick={add}/>}</div>
+          : <><div className="page-intro section-heading"><div><h1>{isStudy && !replay ? 'Записи об углеводах' : 'Дневник питания'}</h1><p>{replay ? 'Записи помпы и добавленные вручную приёмы пищи.' : isStudy ? studyLimit : 'Приёмы пищи, порции и состав продуктов.'}</p>
+            {replay && !hasServer && <p>Ваши записи сохраняются в этом браузере.</p>}</div>{canWrite && <AddButton onClick={add}/>}</div>
             <section className="panel list-panel"><MealRows meals={meals} open={open} edit={canWrite ? edit : undefined}/></section></>)}
         {active === 'history' && <>
           <div className="page-intro section-heading"><div><h1>История</h1><p>{replay ? 'Данные за 1 сентября — 1 октября 2026 года · даты сдвинуты' : isStudy ? 'Откройте запись об углеводах, чтобы посмотреть показания CGM и болюсы.' : 'Откройте приём пищи, чтобы посмотреть глюкозу и события после еды.'}</p></div>{canWrite && <AddButton onClick={add}/>}</div>
@@ -210,7 +214,7 @@ function App({initial}: {initial: Workspace}) {
                 : '1–3 февраля 2024 года. ' + studyTime + '.'}</p>
               <p>{studyLimit} Почасовой базал и физическая активность в этой выборке не показаны.</p>
               <p><a href="https://data.mendeley.com/datasets/gk9m674wcx/1">Открыть AZT1D · Mendeley Data · CC BY 4.0</a></p>
-              <div className="row-actions"><a className="button secondary" href="?workspace=archive#/sources">Личный архив</a>
+              <div className="row-actions">{hasServer && <a className="button secondary" href="?workspace=archive#/sources">Личный архив</a>}
                 <a className="button quiet" href="./#/sources">Синтетическое демо</a></div>
             </section></>
           : isArchive
@@ -239,15 +243,15 @@ function App({initial}: {initial: Workspace}) {
 
 const root = createRoot(document.getElementById('root')!)
 const requested = new URLSearchParams(window.location.search).get('workspace')
-const dataset = hasServer && (requested === 'archive' || requested === 'study') ? requested : 'demo'
+const dataset = requested === 'study' ? 'study' : hasServer && requested === 'archive' ? 'archive' : 'demo'
 async function start() {
-  if (hasServer) root.render(<main className="content" role="status">Открываем локальный архив…</main>)
+  if (hasServer || dataset === 'study') root.render(<main className="content" role="status">Открываем архив…</main>)
   try {
     const workspace = await readWorkspace(dataset)
     root.render(<StrictMode><App initial={workspace}/></StrictMode>)
   } catch {
     root.render(<main className="content"><h1>{dataset === 'study' ? 'Выборка AZT1D недоступна' : 'Локальный архив недоступен'}</h1>
-      {dataset === 'study' ? <p>Выполните <code>python server/prepare-azt1d.py</code> и перезапустите локальный сервер. <a href="./">Открыть синтетическое демо</a></p> : <p>Запустите сервер и повторите попытку.</p>}
+      {dataset === 'study' ? <p>{hasServer ? <>Выполните <code>python server/prepare-azt1d.py</code> и перезапустите локальный сервер.</> : 'Проверьте соединение и повторите попытку.'} <a href="./">Открыть синтетическое демо</a></p> : <p>Запустите сервер и повторите попытку.</p>}
       <button className="button primary" onClick={start}>Повторить</button></main>)
   }
 }

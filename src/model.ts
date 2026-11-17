@@ -28,6 +28,7 @@ export const within = <T extends {at: number}>(records: T[], start: number, end:
 export const asNumber = (value: string) => value.trim() === '' ? null : Number(value)
 export const loggedCarbsDescription = (grams: number) => number(grams) + ' г углеводов по записи помпы'
 export const studySource = 'AZT1D · Tandem t:slim X2'
+export const studyCgmSource = 'AZT1D · Dexcom G6 Pro'
 export const studyBadge = 'AZT1D · исследовательские данные'
 export const studyTime = 'Время из выгрузки · часовой пояс не указан'
 export const studyLimit = 'Углеводы записаны в помпе. Состав блюда, съеденная порция и точное время еды неизвестны.'
@@ -118,6 +119,17 @@ export function insulinText(event: Insulin) {
   if (event.actual === null) return 'Фактическая подача неизвестна'
   const actual = number(event.actual) + ' ед. фактически'
   return event.status === 'interrupted' && event.planned !== undefined ? actual + ' из ' + number(event.planned) + ' ед.' : actual
+}
+
+export function insertCgmGaps(points: CGM[]) {
+  return points.flatMap((point, index) => {
+    const prior = points[index - 1]
+    if (!prior || point.at - prior.at <= 7.5 * minute || prior.value === null || point.value === null) return [point]
+    const start = prior.at + 5 * minute
+    const end = point.at - 5 * minute
+    const missing = (at: number) => ({...point, at, id: 'gap-' + at, value: null})
+    return end > start ? [missing(start), missing(end), point] : [missing(start), point]
+  })
 }
 
 export function gapRanges(points: CGM[]) {

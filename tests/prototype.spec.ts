@@ -5,6 +5,46 @@ const noOverflow = async (page: Page) => {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 }
 
+test('Pages открывает архив AZT1D и сохраняет дневник в браузере', async ({page, browser}) => {
+  const serverRequests: string[] = []
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.includes('/api/')) serverRequests.push(request.url())
+  })
+  await page.goto('./')
+  await page.getByRole('link', {name: 'Открыть архив за сентябрь'}).click()
+  await expect(page.getByLabel('Дата начала')).toHaveValue('2026-09-01')
+  await expect(page.getByLabel('Дата окончания')).toHaveValue('2026-10-01')
+  await expect(page.getByLabel('График за день').locator('option')).toHaveCount(32)
+  await page.getByLabel('График за день').selectOption('2026-10-01')
+  await expect(page.getByRole('heading', {name: 'Глюкоза · 1 октября'})).toBeVisible()
+  await page.getByRole('button', {name: /Открыть разбор/}).first().click()
+  await page.getByRole('button', {name: 'Сравнить эпизоды'}).click()
+  await expect(page.getByRole('heading', {name: 'Сравнение эпизодов'})).toBeVisible()
+
+  await nav(page, 'История').click()
+  await page.getByRole('button', {name: 'Добавить еду'}).click()
+  await page.getByLabel('Название приёма пищи').fill('Ужин из дневника')
+  await page.getByLabel('Название продукта').fill('Гречка')
+  await page.getByLabel('Съеденная масса, г').fill('150')
+  await page.getByRole('button', {name: 'Сохранить запись'}).click()
+  await page.getByRole('button', {name: 'Изменить запись'}).click()
+  await page.getByLabel('Название приёма пищи').fill('Исправленный ужин')
+  await page.getByRole('button', {name: 'Сохранить запись'}).click()
+  await expect(page.getByRole('heading', {name: 'Исправленный ужин'})).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading', {name: 'Исправленный ужин'})).toBeVisible()
+  expect(serverRequests).toEqual([])
+
+  const visitor = await browser.newPage()
+  try {
+    await visitor.goto(new URL('#/diary', page.url()).href)
+    await expect(visitor.getByRole('heading', {name: 'Дневник питания'})).toBeVisible()
+    await expect(visitor.getByRole('heading', {name: 'Исправленный ужин'})).toHaveCount(0)
+  } finally {
+    await visitor.close()
+  }
+})
+
 test('предзаполненный разбор, фактическая подача и общее окно', async ({page}) => {
   await page.goto('./#/analysis/lunch-16')
   await expect(page.getByRole('heading', {name: 'Гречка с курицей'})).toBeVisible()

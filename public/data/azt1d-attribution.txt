@@ -1,0 +1,11 @@
+AZT1D: A Real-World Dataset for Type 1 Diabetes, version 1 (2025).
+Saman Khamesian, Asiful Arefeen, Bithika M. Thompson, Adela Grando, Hassan Ghasemzadeh.
+Mendeley Data. DOI: 10.17632/gk9m674wcx.1.
+Source: https://data.mendeley.com/datasets/gk9m674wcx/1
+License: https://creativecommons.org/licenses/by/4.0/
+
+GlucoDel adaptation: the public snapshot includes only CGM, bolus and carbohydrate
+records from one participant for 2024-02-01 through 2024-03-02. The display dates
+were shifted to 2026-09-01 through 2026-10-01. Time of day and intervals were
+preserved. Glucose was converted from mg/dL to mmol/L, duplicate rows were
+consolidated and conflicting glucose readings are shown as missing.

@@ -1,7 +1,8 @@
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http'
 import {DatabaseSync} from 'node:sqlite'
 import {applyAction, newWorkspace, type Action, type Dataset, type Workspace, type NightscoutStatus} from '../src/workspace.ts'
-import {insertCgmGaps, mergeImport, type ImportKind} from './import.ts'
+import {mergeImport, type ImportKind} from './import.ts'
+import {insertCgmGaps} from '../src/model.ts'
 import {mergeNightscout, type Nightscout} from './nightscout.ts'
 
 type SavedWorkspace = Workspace & {nightscoutImport?: {sourceId: string; lastSuccess: number; changed: number}}

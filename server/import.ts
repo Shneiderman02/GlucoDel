@@ -1,4 +1,4 @@
-import {type CGM, type Insulin, minute} from '../src/model.ts'
+import {type CGM, type Insulin} from '../src/model.ts'
 import type {Observations} from '../src/workspace.ts'
 
 export type ImportKind = 'cgm' | 'pump'
@@ -88,15 +88,4 @@ export function mergeImport(current: Observations, kind: ImportKind, content: st
   const sorted = [...observations.values()].sort((a, b) => a.at - b.at)
   const result = kind === 'cgm' ? {...current, points: sorted as CGM[]} : {...current, insulin: sorted as Insulin[]}
   return {result, added, duplicates: rows.length - added}
-}
-
-export function insertCgmGaps(points: CGM[]) {
-  return points.flatMap((point, index) => {
-    const prior = points[index - 1]
-    if (!prior || point.at - prior.at <= 7.5 * minute || prior.value === null || point.value === null) return [point]
-    const start = prior.at + 5 * minute
-    const end = point.at - 5 * minute
-    const missing = (at: number) => ({...point, at, id: 'gap-' + at, value: null})
-    return end > start ? [missing(start), missing(end), point] : [missing(start), point]
-  })
 }
